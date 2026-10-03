@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EcoMicro-Class | Demo 3D tương tác</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: rgba(12, 28, 45, .88);
+      --line: rgba(148, 190, 214, .22);
+      --text: #eef8ff;
+      --muted: #9db4c5;
+      --green: #63e6a4;
+      --cyan: #54d9ff;
+      --yellow: #ffd166;
+      --orange: #ff9f43;
+      --danger: #ff6b6b;
+      --led-power: 0;
+      --sun-power: .55;
+      --curtain-close: 0;
+      --fan-speed: 0s;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(33, 126, 151, .22), transparent 30%),
+        linear-gradient(145deg, #050b13, #0a1b2c 58%, #07111f);
+      overflow-x: hidden;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .app {
+      width: min(1600px, 100%);
+      margin: auto;
+      padding: 18px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .brand h1 { margin: 0; font-size: clamp(22px, 3vw, 35px); letter-spacing: -.03em; }
+    .brand h1 span { color: var(--green); }
+    .brand p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+
+    .mode-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, .22);
+      white-space: nowrap;
+    }
+
+    .mode-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 16px var(--green);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(340px, .9fr);
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .25);
+      backdrop-filter: blur(14px);
+    }
+
+    .stage-card { min-height: 690px; overflow: hidden; position: relative; }
+    .stage-top {
+      position: absolute; z-index: 30; inset: 16px 16px auto 16px;
+      display: flex; justify-content: space-between; gap: 10px; align-items: flex-start;
+      pointer-events: none;
+    }
+
+    .status-box {
+      max-width: 560px;
+      padding: 11px 14px;
+      border-radius: 13px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(3, 12, 20, .76);
+    }
+    .status-box strong { display: block; color: var(--green); font-size: 17px; }
+    .status-box small { color: var(--muted); }
+
+    .badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .badge {
+      padding: 7px 10px; border-radius: 999px;
+      background: rgba(3,12,20,.76); border: 1px solid var(--line);
+      font-size: 12px; white-space: nowrap;
+    }
+    .badge.on { color: var(--green); border-color: rgba(99,230,164,.5); }
+
+    .viewport {
+      position: absolute; inset: 0;
+      perspective: 1050px;
+      perspective-origin: 50% 44%;
+      cursor: grab;
+      background:
+        radial-gradient(circle at 66% 22%, rgba(255, 211, 102, calc(var(--sun-power) * .22)), transparent 30%),
+        linear-gradient(#163247, #08131f 72%);
+    }
+    .viewport:active { cursor: grabbing; }
+
+    .sky-orb {
+      position: absolute; top: 80px; right: 80px; width: 74px; height: 74px;
+      border-radius: 50%;
+      background: #ffe994;
+      opacity: calc(.25 + var(--sun-power) * .75);
+      box-shadow: 0 0 45px 14px rgba(255, 215, 100, calc(var(--sun-power) * .55));
+      transition: .5s;
+    }
+    .cloud {
+      position: absolute; top: 98px; right: 65px; width: 120px; height: 38px;
+      border-radius: 30px; background: #96a9b5;
+      opacity: 0; transform: translateX(20px); transition: .5s;
+      filter: drop-shadow(0 8px 8px rgba(0,0,0,.3));
+    }
+    .cloud::before, .cloud::after { content: ""; position: absolute; border-radius: 50%; background: inherit; }
+    .cloud::before { width: 52px; height: 52px; left: 18px; top: -24px; }
+    .cloud::after { width: 66px; height: 66px; right: 12px; top: -34px; }
+
+    .room {
+      position: absolute; width: 760px; height: 440px; left: 50%; top: 51%;
+      margin-left: -380px; margin-top: -220px;
+      transform-style: preserve-3d;
+      transform: rotateX(-9deg) rotateY(-18deg) scale(.88);
+      transition: transform .15s ease-out;
+    }
+
+    .plane { position: absolute; transform-style: preserve-3d; backface-visibility: visible; }
+    .floor {
+      width: 760px; height: 440px;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px) 0 0/80px 80px,
+        linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px) 0 0/80px 80px,
+        linear-gradient(135deg, #52667a, #2c3f50);
+      transform: rotateX(90deg) translateZ(-220px);
+      box-shadow: inset 0 0 70px rgba(0,0,0,.35);
+    }
+    .back-wall {
+      width: 760px; height: 440px;
+      transform: translateZ(-220px);
+      background: linear-gradient(#d8eef4, #aecbd4);
+      border: 5px solid #7795a0;
+    }
+    .side-wall {
+      width: 440px; height: 440px; left: -220px;
+      transform: rotateY(90deg);
+      background: linear-gradient(100deg, #b9d8df, #7898a4);
+      border: 5px solid #7795a0;
+    }
+    .ceiling {
+      width: 760px; height: 440px;
+      transform: rotateX(90deg) translateZ(220px);
+      background: rgba(210, 235, 239, .62);
+    }
+
+    .window {
+      position: absolute; width: 270px; height: 165px; left: 48px; top: 78px;
+      border: 12px solid #e9f4f5;
+      background:
+        linear-gradient(90deg, transparent 48%, #e9f4f5 48%, #e9f4f5 52%, transparent 52%),
+        linear-gradient(transparent 47%, #e9f4f5 47%, #e9f4f5 53%, transparent 53%),
+        linear-gradient(#65bfea, #d8f5ff);
+      box-shadow: 0 0 30px rgba(255, 220, 110, calc(var(--sun-power) * .65));
+      overflow: hidden;
+    }
+    .curtain {
+      position: absolute; top: 0; height: 100%; width: 52%;
+      background: repeating-linear-gradient(90deg, #39728b 0 12px, #27596e 12px 22px);
+      transition: transform .9s cubic-bezier(.2,.8,.2,1);
+      z-index: 3;
+    }
+    .curtain.left { left: 0; transform: translateX(calc(-94% + var(--curtain-close) * 94%)); transform-origin: left; }
+    .curtain.right { right: 0; transform: translateX(calc(94% - var(--curtain-close) * 94%)); transform-origin: right; }
+
+    .sunbeam {
+      position: absolute; width: 520px; height: 240px; left: 80px; top: 185px;
+      transform: rotateX(90deg) translateZ(-8px) skewX(-15deg);
+      transform-origin: top left;
+      background: linear-gradient(90deg, rgba(255,228,120, calc(var(--sun-power) * .37)), transparent 75%);
+      clip-path: polygon(0 0, 54% 0, 100% 100%, 22% 100%);
+      pointer-events: none;
+      transition: opacity .5s;
+      opacity: calc(1 - var(--curtain-close) * .8);
+    }
+
+    .board {
+      position: absolute; width: 300px; height: 125px; right: 45px; top: 58px;
+      border: 10px solid #815d3d; border-radius: 3px;
+      background: #214e45; color: rgba(255,255,255,.9);
+      display: grid; place-items: center; text-align: center;
+      font-weight: 700; letter-spacing: .05em; line-height: 1.6;
+      box-shadow: inset 0 0 20px rgba(0,0,0,.25);
+    }
+
+    .sensor {
+      position: absolute; width: 22px; height: 22px; border-radius: 50%;
+      background: var(--cyan); box-shadow: 0 0 15px var(--cyan);
+    }
+    .sensor.light { left: 335px; top: 105px; }
+    .sensor.dht { right: 24px; top: 210px; background: var(--green); box-shadow: 0 0 15px var(--green); }
+
+    .fan { position: absolute; right: 75px; top: 230px; width: 105px; height: 105px; border: 8px solid #607d8b; border-radius: 50%; background: #dce9ed; }
+    .fan-blades { position: absolute; inset: 12px; animation: spin var(--fan-speed) linear infinite; }
+    .blade { position: absolute; left: 32px; top: 0; width: 20px; height: 40px; background: #4b9bb4; border-radius: 80% 10% 70% 20%; transform-origin: 10px 32px; }
+    .blade:nth-child(2) { transform: rotate(120deg); }
+    .blade:nth-child(3) { transform: rotate(240deg); }
+    .fan-hub { position: absolute; width: 20px; height: 20px; left: 35px; top: 35px; border-radius: 50%; background: #284c59; z-index: 2; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .light-fixture {
+      position: absolute; width: 220px; height: 22px; left: 270px; top: 205px;
+      transform: translateZ(200px) rotateX(90deg);
+      background: rgb(calc(115 + var(--led-power) * 140), calc(125 + var(--led-power) * 130), calc(135 + var(--led-power) * 120));
+      border: 4px solid #455a64;
+      box-shadow: 0 0 calc(var(--led-power) * 75px) calc(var(--led-power) * 24px) rgba(255,245,190,var(--led-power));
+      transition: .35s;
+    }
+
+    .desk {
+      position: absolute; width: 150px; height: 78px;
+      transform-style: preserve-3d;
+    }
+    .desk-top { position: absolute; inset: 0; background: #b97c45; border: 5px solid #7c4b29; transform: rotateX(90deg); box-shadow: 0 10px 15px rgba(0,0,0,.25); }
+    .leg { position: absolute; width: 9px; height: 70px; background: #384c55; top: 38px; }
+    .leg.a { left: 12px; } .leg.b { right: 12px; }
+    .desk.d1 { left: 145px; top: 200px; transform: translateZ(75px); }
+    .desk.d2 { left: 390px; top: 200px; transform: translateZ(75px); }
+    .desk.d3 { left: 145px; top: 340px; transform: translateZ(150px); }
+    .desk.d4 { left: 390px; top: 340px; transform: translateZ(150px); }
+
+    .student {
+      position: absolute; width: 38px; height: 58px; z-index: 5;
+      transform: translateZ(90px); transition: opacity .4s, transform .4s;
+    }
+    .student::before { content: ""; position: absolute; left: 8px; width: 23px; height: 23px; border-radius: 50%; background: #f0bd91; border: 3px solid #283744; }
+    .student::after { content: ""; position: absolute; left: 4px; top: 22px; width: 31px; height: 35px; border-radius: 12px 12px 5px 5px; background: #53a8d2; }
+    .student.s1 { left: 195px; top: 205px; }
+    .student.s2 { left: 445px; top: 205px; }
+    .student.s3 { left: 195px; top: 345px; transform: translateZ(160px); }
+    .student.s4 { left: 445px; top: 345px; transform: translateZ(160px); }
+    .student.hidden { opacity: 0; transform: translateZ(40px) scale(.3); }
+
+    .solar {
+      position: absolute; left: 8px; top: -82px; width: 180px; height: 100px;
+      transform: rotateX(55deg) translateZ(-90px);
+      border: 7px solid #8399a5;
+      background:
+        linear-gradient(90deg, transparent 32%, #77a7ba 33%, transparent 34%, transparent 65%, #77a7ba 66%, transparent 67%),
+        linear-gradient(transparent 48%, #77a7ba 49%, transparent 51%),
+        linear-gradient(135deg, #0b3d63, #0d6782);
+      box-shadow: 0 0 25px rgba(84,217,255, calc(var(--sun-power) * .4));
+    }
+
+    .legend {
+      position: absolute; z-index: 25; bottom: 14px; left: 14px;
+      color: var(--muted); font-size: 12px;
+      background: rgba(3,12,20,.7); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px;
+    }
+
+    .controls { padding: 16px; max-height: 690px; overflow: auto; }
+    .controls h2 { margin: 0 0 12px; font-size: 18px; }
+    .section { padding: 14px 0; border-top: 1px solid var(--line); }
+    .section:first-of-type { border-top: 0; padding-top: 4px; }
+    .section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 700; }
+    .section-title small { color: var(--muted); font-weight: 400; }
+
+    .scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .scenario, .action-button {
+      border: 1px solid var(--line); border-radius: 11px;
+      background: rgba(255,255,255,.045); padding: 10px;
+      cursor: pointer; transition: .2s;
+    }
+    .scenario:hover, .action-button:hover { border-color: var(--cyan); background: rgba(84,217,255,.09); transform: translateY(-1px); }
+    .scenario.active { border-color: var(--green); background: rgba(99,230,164,.12); }
+
+    .control { margin: 13px 0; }
+    .control label { display: flex; justify-content: space-between; align-items: center; color: #dcebf3; font-size: 13px; margin-bottom: 6px; }
+    .value { color: var(--cyan); font-variant-numeric: tabular-nums; font-weight: 700; }
+    input[type="range"] { width: 100%; accent-color: var(--green); cursor: pointer; }
+
+    .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
+    .switch { position: relative; width: 48px; height: 26px; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; border-radius: 999px; background: #344b5a; cursor: pointer; transition: .25s; }
+    .slider::before { content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: .25s; }
+    .switch input:checked + .slider { background: #27ae73; }
+    .switch input:checked + .slider::before { transform: translateX(22px); }
+
+    .manual-panel { opacity: .4; pointer-events: none; transition: .25s; }
+    .manual-panel.enabled { opacity: 1; pointer-events: auto; }
+    .manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .save-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .save-row input {
+      min-width: 0; color: var(--text); background: rgba(0,0,0,.2);
+      border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px;
+      outline: none;
+    }
+    .save-row input:focus { border-color: var(--cyan); }
+    .saved-list { display: grid; gap: 7px; margin-top: 9px; }
+    .saved-item {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center;
+      padding: 7px 8px 7px 11px; border: 1px solid var(--line); border-radius: 10px;
+      background: rgba(255,255,255,.035);
+    }
+    .saved-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    .mini-button {
+      border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.05);
+      color: var(--text); cursor: pointer; padding: 5px 8px; font-size: 12px;
+    }
+    .mini-button:hover { border-color: var(--cyan); }
+    .mini-button.delete:hover { border-color: var(--danger); color: var(--danger); }
+    .empty-saved { color: var(--muted); font-size: 12px; padding: 5px 0; }
+
+    .logic {
+      font-size: 12px; line-height: 1.55; color: var(--muted);
+      background: rgba(0,0,0,.18); border-radius: 11px; padding: 10px;
+    }
+    .logic b { color: var(--yellow); }
+
+    .metrics {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      margin-top: 14px;
+    }
+    .metric { padding: 12px; min-height: 92px; }
+    .metric small { color: var(--muted); }
+    .metric strong { display: block; font-size: 24px; margin: 4px 0; font-variant-numeric: tabular-nums; }
+    .metric em { font-style: normal; font-size: 12px; color: var(--green); }
+
+    .chart-card { grid-column: 1 / -1; padding: 14px; }
+    .chart-title { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    canvas { width: 100%; height: 115px; display: block; }
+
+    @media (max-width: 1050px) {
+      .layout { grid-template-columns: 1fr; }
+      .controls { max-height: none; }
+      .stage-card { min-height: 620px; }
+      .room { transform: rotateX(-9deg) rotateY(-18deg) scale(.72); }
+    }
+    @media (max-width: 700px) {
+      .app { padding: 9px; }
+      header { align-items: flex-start; }
+      .mode-pill { font-size: 12px; }
+      .stage-card { min-height: 520px; }
+      .room { transform: rotateX(-9deg) rotateY(-18deg) scale(.54); }
+      .metrics { grid-template-columns: 1fr 1fr; }
+      .badges { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="brand">
+        <h1><span>EcoMicro</span>-Class 3D Lab</h1>
+        <p>Phòng thí nghiệm vi khí hậu học đường — kéo thanh điều khiển để tự tạo tình huống.</p>
+      </div>
+      <div class="mode-pill"><span class="mode-dot"></span><span id="modeText">Hệ thống tự động</span></div>
+    </header>
+
+    <section class="layout">
+      <div>
+        <div class="card stage-card">
+          <div class="stage-top">
+            <div class="status-box">
+              <strong id="mainStatus">Phòng học thoải mái</strong>
+              <small id="explanation">Đủ ánh sáng, nhiệt độ phù hợp — các thiết bị tiết kiệm điện.</small>
+            </div>
+            <div class="badges">
+              <span class="badge" id="curtainBadge">Rèm: MỞ</span>
+              <span class="badge" id="lightBadge">Đèn: 0%</span>
+              <span class="badge" id="fanBadge">Quạt: TẮT</span>
+              <span class="badge" id="energyBadge">Solar: 55%</span>
+            </div>
+          </div>
+
+          <div class="viewport" id="viewport" title="Giữ chuột và kéo để xoay góc nhìn">
+            <div class="sky-orb"></div>
+            <div class="cloud" id="cloud"></div>
+            <div class="room" id="room">
+              <div class="plane floor"></div>
+              <div class="plane back-wall">
+                <div class="window">
+                  <div class="curtain left"></div>
+                  <div class="curtain right"></div>
+                </div>
+                <div class="board">ECOMICRO-CLASS<br><small>CẢM BIẾN → QUYẾT ĐỊNH → HÀNH ĐỘNG</small></div>
+                <div class="sensor light" title="Cảm biến ánh sáng"></div>
+                <div class="sensor dht" title="Cảm biến nhiệt độ – độ ẩm"></div>
+                <div class="fan"><div class="fan-blades"><i class="blade"></i><i class="blade"></i><i class="blade"></i><i class="fan-hub"></i></div></div>
+              </div>
+              <div class="plane side-wall"></div>
+              <div class="plane ceiling"></div>
+              <div class="plane sunbeam"></div>
+              <div class="light-fixture"></div>
+              <div class="solar" title="Tấm pin năng lượng mặt trời"></div>
+
+              <div class="desk d1"><div class="desk-top"></div><i class="leg a"></i><i class="leg b"></i></div>
+              <div class="desk d2"><div class="desk-top"></div><i class="leg a"></i><i class="leg b"></i></div>
+              <div class="desk d3"><div class="desk-top"></div><i class="leg a"></i><i class="leg b"></i></div>
+              <div class="desk d4"><div class="desk-top"></div><i class="leg a"></i><i class="leg b"></i></div>
+              <div class="student s1"></div><div class="student s2"></div><div class="student s3"></div><div class="student s4"></div>
+            </div>
+            <div class="legend">🖱️ Kéo chuột để xoay mô hình · Dùng bảng bên phải để tạo tình huống</div>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div class="card metric"><small>Ánh sáng tại bàn</small><strong id="deskLux">650</strong><em>đơn vị tương đối</em></div>
+          <div class="card metric"><small>Nhiệt độ</small><strong id="tempRead">27.0°C</strong><em id="tempNote">thoải mái</em></div>
+          <div class="card metric"><small>Độ ẩm</small><strong id="humidityRead">58%</strong><em id="humidityNote">phù hợp</em></div>
+          <div class="card metric"><small>Công suất tải</small><strong id="powerRead">0.3 W</strong><em id="powerNote">đang tiết kiệm</em></div>
+          <div class="card chart-card">
+            <div class="chart-title"><span>Lịch sử 60 giây</span><span>— ánh sáng &nbsp; — nhiệt độ</span></div>
+            <canvas id="chart" width="1000" height="150"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card controls">
+        <h2>Bảng điều khiển tình huống</h2>
+
+        <div class="section">
+          <div class="section-title">Tình huống nhanh <small>Nhấn để trình diễn</small></div>
+          <div class="scenario-grid">
+            <button class="scenario active" data-scene="normal">🌤️ Bình thường</button>
+            <button class="scenario" data-scene="sunny">☀️ Nắng gắt</button>
+            <button class="scenario" data-scene="storm">🌧️ Mưa tối</button>
+            <button class="scenario" data-scene="hot">🌡️ Nóng ẩm</button>
+            <button class="scenario" data-scene="empty">🚪 Không có người</button>
+            <button class="scenario" data-scene="challenge">🧪 Thử thách</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Tự tạo môi trường <small>Mọi thanh kéo đều hoạt động</small></div>
+          <div class="control">
+            <label>Nắng ngoài trời <span class="value" id="sunValue">55%</span></label>
+            <input id="sun" type="range" min="0" max="100" value="55">
+          </div>
+          <div class="control">
+            <label>Mây che <span class="value" id="cloudValue">10%</span></label>
+            <input id="cloudiness" type="range" min="0" max="100" value="10">
+          </div>
+          <div class="control">
+            <label>Nhiệt độ <span class="value" id="temperatureValue">27.0°C</span></label>
+            <input id="temperature" type="range" min="18" max="40" step="0.5" value="27">
+          </div>
+          <div class="control">
+            <label>Độ ẩm <span class="value" id="humidityValue">58%</span></label>
+            <input id="humidity" type="range" min="30" max="95" value="58">
+          </div>
+          <div class="control">
+            <label>Số người trong lớp <span class="value" id="peopleValue">4</span></label>
+            <input id="people" type="range" min="0" max="4" value="4">
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Lưu kịch bản của tôi <small>Lưu ngay trên máy này</small></div>
+          <div class="save-row">
+            <input id="scenarioName" maxlength="40" placeholder="Ví dụ: Giờ học chiều mùa hè">
+            <button class="action-button" id="saveScenario">💾 Lưu</button>
+          </div>
+          <div class="saved-list" id="savedList"></div>
+        </div>
+
+        <div class="section">
+          <div class="switch-row">
+            <div><b>Điều khiển tự động</b><br><small style="color:var(--muted)">Tắt để học sinh tự điều khiển</small></div>
+            <label class="switch"><input id="autoMode" type="checkbox" checked><span class="slider"></span></label>
+          </div>
+
+          <div class="manual-panel" id="manualPanel">
+            <div class="section-title">Điều khiển bằng tay</div>
+            <div class="manual-grid">
+              <button class="action-button" id="manualCurtain">🪟 Đóng rèm</button>
+              <button class="action-button" id="manualFan">🌀 Bật quạt</button>
+            </div>
+            <div class="control">
+              <label>Độ sáng đèn <span class="value" id="manualLedValue">0%</span></label>
+              <input id="manualLed" type="range" min="0" max="100" value="0">
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">“Bộ não” đang suy luận</div>
+          <div class="logic" id="logicText">
+            Ánh sáng ngoài trời không gây chói. Ánh sáng tại bàn đạt yêu cầu. <b>Giữ rèm mở, đèn tắt.</b>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const root = document.documentElement;
+    const controls = {
+      sun: $('sun'), cloud: $('cloudiness'), temperature: $('temperature'),
+      humidity: $('humidity'), people: $('people'), auto: $('autoMode'),
+      manualLed: $('manualLed')
+    };
+
+    const scenes = {
+      normal:    { sun: 73, cloud: 0,  temperature: 27, humidity: 58, people: 4 },
+      sunny:     { sun: 96, cloud: 0,  temperature: 31, humidity: 55, people: 4 },
+      storm:     { sun: 18, cloud: 92, temperature: 25, humidity: 82, people: 4 },
+      hot:       { sun: 72, cloud: 18, temperature: 34, humidity: 84, people: 4 },
+      empty:     { sun: 15, cloud: 70, temperature: 29, humidity: 65, people: 0 },
+      challenge: { sun: 91, cloud: 5,  temperature: 35, humidity: 88, people: 4 }
+    };
+
+    let state = { curtainClosed: false, fanOn: false, led: 0, manualCurtain: false, manualFan: false };
+    let history = [];
+    let customScenes = JSON.parse(localStorage.getItem('ecomicro-custom-scenes') || '[]');
+
+    function environment() {
+      return {
+        sun: +controls.sun.value,
+        cloud: +controls.cloud.value,
+        temperature: +controls.temperature.value,
+        humidity: +controls.humidity.value,
+        people: +controls.people.value
+      };
+    }
+
+    function calculate() {
+      const e = environment();
+      const effectiveSun = e.sun * (1 - e.cloud / 125);
+
+      if (controls.auto.checked) {
+        // Hysteresis: đóng ở 74, chỉ mở lại khi xuống dưới 64.
+        if (!state.curtainClosed && effectiveSun >= 74) state.curtainClosed = true;
+        else if (state.curtainClosed && effectiveSun <= 64) state.curtainClosed = false;
+
+        if (!state.fanOn && e.temperature >= 30) state.fanOn = true;
+        else if (state.fanOn && e.temperature <= 28.5) state.fanOn = false;
+
+        const curtainFactor = state.curtainClosed ? .34 : .82;
+        const naturalDesk = effectiveSun * curtainFactor;
+        const deficit = Math.max(0, 60 - naturalDesk);
+        state.led = e.people > 0 ? Math.min(100, deficit * 1.65) : 0;
+      } else {
+        state.curtainClosed = state.manualCurtain;
+        state.fanOn = state.manualFan;
+        state.led = +controls.manualLed.value;
+      }
+
+      const curtainFactor = state.curtainClosed ? .34 : .82;
+      const naturalDesk = effectiveSun * curtainFactor;
+      const deskLight = Math.round(Math.min(100, naturalDesk + state.led * .55) * 10);
+      const solarGeneration = Math.max(0, effectiveSun * .045);
+      const loadPower = .3 + state.led * .035 + (state.fanOn ? 2.4 : 0) + .35;
+
+      updateVisuals(e, effectiveSun, deskLight, solarGeneration, loadPower);
+    }
+
+    function updateVisuals(e, effectiveSun, deskLight, solarGeneration, loadPower) {
+      root.style.setProperty('--sun-power', (effectiveSun / 100).toFixed(2));
+      root.style.setProperty('--curtain-close', state.curtainClosed ? 1 : 0);
+      root.style.setProperty('--led-power', (state.led / 100).toFixed(2));
+      root.style.setProperty('--fan-speed', state.fanOn ? '.55s' : '0s');
+      $('cloud').style.opacity = Math.min(.96, e.cloud / 100);
+      $('cloud').style.transform = `translateX(${20 - e.cloud * .2}px)`;
+
+      document.querySelectorAll('.student').forEach((student, index) => {
+        student.classList.toggle('hidden', index >= e.people);
+      });
+
+      $('sunValue').textContent = `${e.sun}%`;
+      $('cloudValue').textContent = `${e.cloud}%`;
+      $('temperatureValue').textContent = `${e.temperature.toFixed(1)}°C`;
+      $('humidityValue').textContent = `${e.humidity}%`;
+      $('peopleValue').textContent = e.people;
+      $('manualLedValue').textContent = `${Math.round(state.led)}%`;
+
+      $('curtainBadge').textContent = `Rèm: ${state.curtainClosed ? 'ĐÓNG' : 'MỞ'}`;
+      $('lightBadge').textContent = `Đèn: ${Math.round(state.led)}%`;
+      $('fanBadge').textContent = `Quạt: ${state.fanOn ? 'BẬT' : 'TẮT'}`;
+      $('energyBadge').textContent = `Solar: ${solarGeneration.toFixed(1)} W`;
+      $('curtainBadge').classList.toggle('on', state.curtainClosed);
+      $('lightBadge').classList.toggle('on', state.led > 2);
+      $('fanBadge').classList.toggle('on', state.fanOn);
+      $('energyBadge').classList.toggle('on', solarGeneration >= loadPower);
+
+      $('deskLux').textContent = deskLight;
+      $('tempRead').textContent = `${e.temperature.toFixed(1)}°C`;
+      $('humidityRead').textContent = `${e.humidity}%`;
+      $('powerRead').textContent = `${loadPower.toFixed(1)} W`;
+      $('tempNote').textContent = e.temperature >= 30 ? 'cần làm mát' : e.temperature < 21 ? 'hơi lạnh' : 'thoải mái';
+      $('humidityNote').textContent = e.humidity > 75 ? 'quá ẩm – không phun sương' : e.humidity < 40 ? 'khô' : 'phù hợp';
+      $('powerNote').textContent = solarGeneration >= loadPower ? 'solar đang đủ tải' : 'đang dùng pin/USB';
+
+      let status = 'Phòng học thoải mái';
+      let explanation = 'Đủ ánh sáng, nhiệt độ phù hợp — các thiết bị tiết kiệm điện.';
+      if (e.people === 0) {
+        status = 'Không có người — tiết kiệm năng lượng';
+        explanation = controls.auto.checked ? 'Cảm biến hiện diện không phát hiện học sinh nên đèn được tắt.' : 'Đang ở chế độ điều khiển thủ công.';
+      } else if (e.temperature >= 30 && e.humidity > 75) {
+        status = 'Nóng và ẩm cao';
+        explanation = 'Quạt thông gió hoạt động; hệ thống khóa phun sương vì sẽ làm độ ẩm tăng thêm.';
+      } else if (state.curtainClosed && state.led > 2) {
+        status = 'Chống chói và bù sáng đồng thời';
+        explanation = 'Rèm giảm nắng trực tiếp; đèn LED bù phần ánh sáng còn thiếu tại bàn học.';
+      } else if (state.fanOn) {
+        status = 'Phòng nóng — đang làm mát';
+        explanation = 'Nhiệt độ vượt ngưỡng 30°C nên quạt được bật.';
+      } else if (state.led > 2) {
+        status = 'Thiếu sáng — đang bù sáng';
+        explanation = 'Ánh sáng tự nhiên không đủ nên LED tăng sáng theo mức thiếu hụt.';
+      }
+      $('mainStatus').textContent = status;
+      $('explanation').textContent = explanation;
+
+      const actions = [];
+      actions.push(effectiveSun >= 74 ? 'Nắng hiệu dụng ≥ 74 → đóng rèm chống chói.' : 'Nắng chưa gây chói → có thể mở rèm.');
+      actions.push(deskLight < 600 ? 'Ánh sáng tại bàn còn thấp → tăng LED.' : 'Ánh sáng tại bàn đạt yêu cầu.');
+      actions.push(e.temperature >= 30 ? 'Nhiệt độ ≥ 30°C → bật quạt.' : 'Nhiệt độ dưới ngưỡng bật quạt.');
+      if (e.humidity > 75) actions.push('Độ ẩm cao → khóa phun sương.');
+      if (e.people === 0) actions.push('Không có người → ưu tiên tắt đèn.');
+      $('logicText').innerHTML = actions.join(' ') + ` <b>Kết quả: rèm ${state.curtainClosed ? 'đóng' : 'mở'}, LED ${Math.round(state.led)}%, quạt ${state.fanOn ? 'bật' : 'tắt'}.</b>`;
+    }
+
+    function selectScene(name) {
+      const s = scenes[name];
+      Object.keys(s).forEach(key => controls[key].value = s[key]);
+      document.querySelectorAll('.scenario').forEach(button => button.classList.toggle('active', button.dataset.scene === name));
+      calculate();
+    }
+
+    function saveCustomScenario() {
+      const name = $('scenarioName').value.trim();
+      if (!name) {
+        $('scenarioName').focus();
+        $('scenarioName').placeholder = 'Hãy đặt tên cho tình huống';
+        return;
+      }
+      const e = environment();
+      const item = {
+        id: Date.now(), name,
+        ...e,
+        auto: controls.auto.checked,
+        manualCurtain: state.manualCurtain,
+        manualFan: state.manualFan,
+        manualLed: +controls.manualLed.value
+      };
+      customScenes.unshift(item);
+      customScenes = customScenes.slice(0, 12);
+      localStorage.setItem('ecomicro-custom-scenes', JSON.stringify(customScenes));
+      $('scenarioName').value = '';
+      renderSavedScenarios();
+    }
+
+    function loadCustomScenario(id) {
+      const item = customScenes.find(scene => scene.id === id);
+      if (!item) return;
+      ['sun', 'cloud', 'temperature', 'humidity', 'people'].forEach(key => controls[key].value = item[key]);
+      controls.auto.checked = item.auto;
+      state.manualCurtain = item.manualCurtain;
+      state.manualFan = item.manualFan;
+      controls.manualLed.value = item.manualLed;
+      $('manualPanel').classList.toggle('enabled', !item.auto);
+      $('modeText').textContent = item.auto ? 'Hệ thống tự động' : 'Điều khiển thủ công';
+      $('manualCurtain').textContent = state.manualCurtain ? '🪟 Mở rèm' : '🪟 Đóng rèm';
+      $('manualFan').textContent = state.manualFan ? '🌀 Tắt quạt' : '🌀 Bật quạt';
+      document.querySelectorAll('.scenario').forEach(button => button.classList.remove('active'));
+      calculate();
+    }
+
+    function deleteCustomScenario(id) {
+      customScenes = customScenes.filter(scene => scene.id !== id);
+      localStorage.setItem('ecomicro-custom-scenes', JSON.stringify(customScenes));
+      renderSavedScenarios();
+    }
+
+    function renderSavedScenarios() {
+      const list = $('savedList');
+      list.innerHTML = '';
+      if (!customScenes.length) {
+        list.innerHTML = '<div class="empty-saved">Chưa có kịch bản tự tạo.</div>';
+        return;
+      }
+      customScenes.forEach(scene => {
+        const row = document.createElement('div');
+        row.className = 'saved-item';
+        const name = document.createElement('span');
+        name.textContent = scene.name;
+        name.title = `${scene.temperature}°C · ${scene.humidity}% · ${scene.people} người`;
+        const load = document.createElement('button');
+        load.className = 'mini-button';
+        load.textContent = 'Mở';
+        load.addEventListener('click', () => loadCustomScenario(scene.id));
+        const remove = document.createElement('button');
+        remove.className = 'mini-button delete';
+        remove.textContent = 'Xóa';
+        remove.addEventListener('click', () => deleteCustomScenario(scene.id));
+        row.append(name, load, remove);
+        list.append(row);
+      });
+    }
+
+    document.querySelectorAll('.scenario').forEach(button => button.addEventListener('click', () => selectScene(button.dataset.scene)));
+    Object.values(controls).forEach(control => control.addEventListener('input', () => {
+      document.querySelectorAll('.scenario').forEach(button => button.classList.remove('active'));
+      calculate();
+    }));
+
+    controls.auto.addEventListener('change', () => {
+      $('manualPanel').classList.toggle('enabled', !controls.auto.checked);
+      $('modeText').textContent = controls.auto.checked ? 'Hệ thống tự động' : 'Điều khiển thủ công';
+      calculate();
+    });
+
+    $('manualCurtain').addEventListener('click', () => {
+      state.manualCurtain = !state.manualCurtain;
+      $('manualCurtain').textContent = state.manualCurtain ? '🪟 Mở rèm' : '🪟 Đóng rèm';
+      calculate();
+    });
+    $('manualFan').addEventListener('click', () => {
+      state.manualFan = !state.manualFan;
+      $('manualFan').textContent = state.manualFan ? '🌀 Tắt quạt' : '🌀 Bật quạt';
+      calculate();
+    });
+    $('saveScenario').addEventListener('click', saveCustomScenario);
+    $('scenarioName').addEventListener('keydown', event => {
+      if (event.key === 'Enter') saveCustomScenario();
+    });
+
+    // Kéo chuột để xoay góc nhìn 3D.
+    let dragging = false, lastX = 0, lastY = 0, rotX = -9, rotY = -18;
+    $('viewport').addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; $('viewport').setPointerCapture(e.pointerId); });
+    $('viewport').addEventListener('pointermove', e => {
+      if (!dragging) return;
+      rotY += (e.clientX - lastX) * .18;
+      rotX = Math.max(-28, Math.min(12, rotX - (e.clientY - lastY) * .12));
+      lastX = e.clientX; lastY = e.clientY;
+      const scale = window.innerWidth < 700 ? .54 : window.innerWidth < 1050 ? .72 : .88;
+      $('room').style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(${scale})`;
+    });
+    $('viewport').addEventListener('pointerup', () => dragging = false);
+    $('viewport').addEventListener('pointercancel', () => dragging = false);
+
+    function drawChart() {
+      const canvas = $('chart');
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(rect.width * dpr)) {
+        canvas.width = Math.round(rect.width * dpr);
+        canvas.height = Math.round(115 * dpr);
+      }
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = 'rgba(148,190,214,.16)'; ctx.lineWidth = dpr;
+      for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(0, h*i/4); ctx.lineTo(w, h*i/4); ctx.stroke(); }
+
+      function line(values, color, min, max) {
+        if (values.length < 2) return;
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2*dpr;
+        values.forEach((v, i) => {
+          const x = i * w / 59;
+          const y = h - ((v - min) / (max - min)) * h;
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        });
+        ctx.stroke();
+      }
+      line(history.map(x => x.light), '#54d9ff', 0, 1000);
+      line(history.map(x => x.temp), '#ff9f43', 18, 40);
+    }
+
+    setInterval(() => {
+      const e = environment();
+      const effectiveSun = e.sun * (1 - e.cloud / 125);
+      const natural = effectiveSun * (state.curtainClosed ? .34 : .82);
+      const light = Math.round(Math.min(100, natural + state.led * .55) * 10);
+      history.push({ light, temp: e.temperature });
+      if (history.length > 60) history.shift();
+      drawChart();
+    }, 1000);
+    window.addEventListener('resize', drawChart);
+
+    selectScene('normal');
+    renderSavedScenarios();
+    for (let i = 0; i < 20; i++) history.push({ light: 650, temp: 27 });
+    drawChart();
+  </script>
+</body>
+</html>
